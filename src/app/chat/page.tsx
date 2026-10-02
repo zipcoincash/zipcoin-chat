@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { localModelId, LocalModelPicker, readLocalEndpoint } from "@/components/local-model";
 import { Markdown } from "@/components/markdown";
 import { PublishToBook } from "@/components/publish";
 import { Button, Card, CardHead, inputCls, Notice } from "@/components/ui";
@@ -91,6 +92,15 @@ export default function ChatPage() {
   const { data: models } = useModels();
   const [model, setModel] = useState(DEFAULT_MODEL);
   const [filter, setFilter] = useState("");
+  // Where the model runs: through zkAPI (private, paid from the note) or on the user's own machine (free, nothing leaves it).
+  const local = localModelId(model);
+  const [source, setSource] = useState<"zkapi" | "local">("zkapi");
+  useEffect(() => {
+    const t = setTimeout(() => setSource(localModelId(model) ? "local" : "zkapi"), 0);
+    return () => clearTimeout(t);
+    // once, from the restored model
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const tier: Tier = KEY_CAP;
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
@@ -142,10 +152,12 @@ export default function ChatPage() {
   const lease = snapshot?.config?.active_lease ?? null;
   const picked = models?.find((m) => m.id === model);
   const shown = useMemo(() => (models ?? []).filter((m) => !filter || m.id.includes(filter.toLowerCase()) || (m.name ?? "").toLowerCase().includes(filter.toLowerCase())).slice(0, 60), [models, filter]);
-  const canSend = !!client && !!note && !busy && input.trim().length > 0 && (balanceUsd === null || balanceUsd >= tier);
+  const canSend = !busy && input.trim().length > 0 && (local ? true : !!client && !!note && (balanceUsd === null || balanceUsd >= tier));
 
   const send = async (prepared?: Msg) => {
-    if (!client || busy || !note) return;
+    if (busy) return;
+    if (local) return sendLocal(prepared);
+    if (!client || !note) return;
     if (retryTimer.current) {
       clearInterval(retryTimer.current);
       retryTimer.current = null;
@@ -251,6 +263,63 @@ export default function ChatPage() {
     }
   };
 
+  /** Local mode: straight to the user's own OpenAI-compatible server. No lease, no key, no cost. */
+  const sendLocal = async (prepared?: Msg) => {
+    const text = prepared?.content ?? input.trim();
+    if (!text || !local) return;
+    if (!prepared) setInput("");
+    setError(null);
+    setBusy(true);
+    const userMsg: Msg = prepared ?? { role: "user", content: text };
+    const history: Msg[] = [...msgs, userMsg];
+    setMsgs([...history, { role: "assistant", content: "" }]);
+    const wire = history.map((m) => ({ role: m.role, content: m.context ? `${m.content}\n\n[On-chain data fetched by the user's browser]\n${m.context}` : m.content }));
+    abort.current = new AbortController();
+    try {
+      setPhase("asking your local model");
+      const r = await fetch(`${readLocalEndpoint().replace(/\/+$/, "")}/chat/completions`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        signal: abort.current.signal,
+        body: JSON.stringify({ model: local, messages: wire, stream: true }),
+      });
+      if (!r.ok || !r.body) throw new Error(`${r.status}: ${(await r.text()).slice(0, 200)}`);
+      setPhase(null);
+      const reader = r.body.getReader();
+      const dec = new TextDecoder();
+      let buf = "";
+      let out = "";
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split("\n");
+        buf = lines.pop() ?? "";
+        for (const line of lines) {
+          if (!line.startsWith("data:")) continue;
+          const data = line.slice(5).trim();
+          if (data === "[DONE]") continue;
+          try {
+            const j = JSON.parse(data) as { choices?: { delta?: { content?: string } }[] };
+            const delta = j.choices?.[0]?.delta?.content;
+            if (delta) {
+              out += delta;
+              setMsgs([...history, { role: "assistant", content: out }]);
+            }
+          } catch {}
+        }
+      }
+      setUsage((s) => ({ ...s, requests: s.requests + 1 }));
+    } catch (e) {
+      const m = e instanceof Error ? e.message.split("\n")[0] : "failed";
+      if (!/abort/i.test(m)) setError(/Failed to fetch|NetworkError|Load failed/i.test(m) ? "Your local model did not answer. Is the server running and allowing this origin? (Ollama: OLLAMA_ORIGINS=https://chat.zipcoin.cash)" : m);
+      setMsgs((cur) => (cur[cur.length - 1]?.role === "assistant" && !cur[cur.length - 1].content ? cur.slice(0, -1) : cur));
+    } finally {
+      setPhase(null);
+      setBusy(false);
+    }
+  };
+
   /** The conversation as a file: Markdown to read, JSON to re-import or feed to something else. Nothing but the words. */
   const exportChat = (kind: "md" | "json") => {
     const stamp = new Date().toISOString().slice(0, 16).replace("T", " ");
@@ -304,17 +373,21 @@ export default function ChatPage() {
   };
 
   if (sdkError) return <Notice tone="burn">zkAPI SDK: {sdkError}</Notice>;
-  if (snapshot && !note)
+  if (snapshot && !note && !local && source !== "local")
     return (
       <div className="space-y-4 page-in">
         <Notice>No credits in this browser yet. <Link href="/" className="underline">Fund a chat</Link> first, or <Link href="/wallet" className="underline">restore a backup</Link>.</Notice>
+        <p className="text-xs text-faint">
+          Or run a model on your own computer, free:{" "}
+          <button className="text-muted underline hover:text-snow" onClick={() => setSource("local")}>use a local model</button>
+        </p>
       </div>
     );
 
   return (
     <div className="grid gap-6 page-in md:grid-cols-[1fr_280px]">
       <Card className="flex min-h-[70vh] flex-col">
-        <CardHead title={picked?.name ?? model} hint={lease ? `key live, cap $${lease.spending_limit_usd}, ${Math.max(0, lease.expires_at - Math.floor(Date.now() / 1000))}s` : "no key yet"} right={
+        <CardHead title={local ? `${local} · local` : (picked?.name ?? model)} hint={local ? "your machine, free, nothing leaves it" : lease ? `key live, cap $${lease.spending_limit_usd}, ${Math.max(0, lease.expires_at - Math.floor(Date.now() / 1000))}s` : "no key yet"} right={
             <span className="flex gap-3 text-xs">
               {msgs.length > 0 && <button className="text-muted hover:text-snow" onClick={() => exportChat("md")} title="download as Markdown">export</button>}
               {msgs.length > 0 && <button className="text-muted hover:text-snow" onClick={() => exportChat("json")} title="download as JSON">json</button>}
@@ -399,8 +472,16 @@ export default function ChatPage() {
           </div>
         </Card>
         <Card>
-          <CardHead title="Model" hint={picked ? `${perM(picked.pricing?.prompt)} in · ${perM(picked.pricing?.completion)} out` : undefined} />
+          <CardHead title="Model" hint={source === "local" ? "on your computer" : picked ? `${perM(picked.pricing?.prompt)} in · ${perM(picked.pricing?.completion)} out` : undefined} />
           <div className="p-4">
+            <div className="mb-3 flex gap-1 text-xs" role="radiogroup" aria-label="Where the model runs">
+              <button role="radio" aria-checked={source === "zkapi"} onClick={() => { setSource("zkapi"); if (local) setModel(DEFAULT_MODEL); }} className={`press flex-1 border px-2 py-1.5 ${source === "zkapi" ? "border-tap text-tap" : "border-line text-muted hover:text-snow"}`}>via zkAPI · private, paid</button>
+              <button role="radio" aria-checked={source === "local"} onClick={() => setSource("local")} className={`press flex-1 border px-2 py-1.5 ${source === "local" ? "border-tap text-tap" : "border-line text-muted hover:text-snow"}`}>on my computer · free</button>
+            </div>
+            {source === "local" ? (
+              <LocalModelPicker model={model} onPick={setModel} />
+            ) : (
+              <>
             <input className={`${inputCls} mb-2 text-xs`} placeholder="search OpenRouter models" value={filter} onChange={(e) => setFilter(e.target.value)} />
             <ul className="max-h-64 overflow-y-auto border border-line text-xs">
               {shown.map((m) => (
@@ -411,6 +492,8 @@ export default function ChatPage() {
               {!models && <li className="caret px-3 py-2 text-faint">loading catalog</li>}
             </ul>
             <input className={`${inputCls} mt-2 text-xs`} value={model} onChange={(e) => setModel(e.target.value.trim())} spellCheck={false} />
+              </>
+            )}
           </div>
         </Card>
       </div>
