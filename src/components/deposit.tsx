@@ -33,7 +33,12 @@ export function DepositCard() {
   // Whole gwei only: the vault's ledger unit.
   const principalWei = balance && balance > reserve ? ((balance - reserve) / 10n ** 9n) * 10n ** 9n : 0n;
   const ethAmount = formatEther(principalWei);
-  const minUnits = 50_000n * 10n ** 9n;
+  // The vault's own minimum, and ours: a deposit must be worth at least three times the gas it burns, or it is a bad deal
+  // (seen on launch day: 0.001 ETH deposited for 0.0038 ETH of gas when the base fee spiked). Gas falls; the ETH stays on the key.
+  const vaultMin = 50_000n * 10n ** 9n;
+  const sensibleMin = gas ? (gas.depositCost * 3n > vaultMin ? gas.depositCost * 3n : vaultMin) : vaultMin;
+  const minUnits = sensibleMin;
+  const gasShare = gas && principalWei > 0n ? Number((gas.depositCost * 100n) / (principalWei + gas.depositCost)) : 0;
 
   const deposit = async () => {
     if (!client || !account || principalWei < minUnits) return;
@@ -156,7 +161,16 @@ export function DepositCard() {
           transaction mined. Press Resume; the wallet checks the chain and either recovers the note or rebuilds the deposit.
         </Notice>
       )}
-      {balance !== null && balance > 0n && principalWei < minUnits && <Notice tone="burn">Not enough on the address yet: the gas reserve alone is {fmtEth(reserve)} ETH right now. Fund more, or wait for cheaper gas.</Notice>}
+      {balance !== null && balance > 0n && principalWei < minUnits && !pending && (
+        <Notice tone="burn">
+          {principalWei > 0n
+            ? `Gas is ${gas ? (Number(gas.price) / 1e9).toFixed(2) : "?"} gwei right now: after the vault's gas and the reserve, only ${fmtEth(principalWei)} ETH (${usd(principalWei)}) would become credits, and the deposit itself would burn ${gas ? fmtEth(gas.depositCost) : "?"} ETH. Not worth it. Wait for cheaper gas (the ETH stays on this address; come back and press deposit later) or fund more.`
+            : `Not enough on the address yet: the gas reserve alone is ${fmtEth(reserve)} ETH right now. Fund more, or wait for cheaper gas.`}
+        </Notice>
+      )}
+      {balance !== null && principalWei >= minUnits && gasShare >= 15 && !pending && (
+        <Notice>Gas is a big share of this deposit right now ({gasShare}% of the amount goes to the vault&apos;s gas). It works, but waiting for a quieter hour keeps more as credits.</Notice>
+      )}
       <Button className="w-full" disabled={!client || busy || (pending ? false : principalWei < minUnits)} busy={busy} onClick={pending ? resume : deposit}>
         {pending ? "Resume the deposit" : "Deposit into the vault"}
       </Button>
