@@ -22,6 +22,10 @@ words and ours. Keep it small.
    wallet. [@zipcoinbook](https://x.com/zipcoinbook) posts it.
 6. **Gift links.** `/gift` makes links that fund a chat in one click for whoever opens them.
 7. **Wallet.** Encrypted backup of key + credits; cooperative close or unilateral escape to any address.
+8. **Local models.** Point the chat at Ollama / LM Studio / any OpenAI-compatible server on your own machine: no credits, nothing
+   leaves the computer. The server must allow this origin (Ollama: `OLLAMA_ORIGINS=https://chat.zipcoin.cash ollama serve`).
+9. **Agents.** The same thing from a terminal or an MCP server: `npm i -g @zipcoin/agent` → `zipcoin ai deposit 0.01` → `zipcoin ai chat "…"`
+   (zkAPI's browser SDK run under Node; see [zipcoin-agent](https://github.com/zipcoincash/zipcoin-agent)).
 
 What the server does: serve the page, and pass **prompt-free** protocol traffic to zkAPI's server (`/zkapi-deployment/*`, because
 their `/v2` and `/v1/tree` send no CORS headers). No keys, no database, no logs of anything you type.
