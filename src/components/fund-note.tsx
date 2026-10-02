@@ -11,7 +11,7 @@ import { POOLS, type PoolId } from "@/lib/pools";
 import { isApproved, proveSpend, recoverNotes, type Note } from "@/lib/zip";
 
 import { minFunding, useGas } from "./gas";
-import { Button, Empty, Field, fmtEth, inputCls, Notice, Receipt, TxLink } from "./ui";
+import { Button, Empty, FeeSummary, Field, fmtEth, inputCls, Notice, TxLink } from "./ui";
 import { useWallet } from "./wallet-ctx";
 import { useZipKey, ZipKeyPanel } from "./zip-key";
 
@@ -152,16 +152,17 @@ export function FundFromNote({ mode }: { mode: "wallet" | "phrase" }) {
                 <input className={`${inputCls} text-lg`} inputMode="decimal" placeholder={formatUnits(note.value, 18)} value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))} />
               </Field>
               {value > 0n && (
-                <Receipt
-                  title="What this chat receives"
-                  tone="muted"
+                <FeeSummary
+                  totalLabel="Chat credits you get"
+                  total={quoting && !ethQuote ? "quoting…" : gas && ethEst > gas.reserve ? `≈ ${fmtEth(ethEst - gas.reserve)} ETH (${usd(ethEst - gas.reserve)})` : "—"}
+                  fees={gas && ethEst ? `≈ ${fmtEth(fee)} ${pool === "zc" ? "ZC" : "ETH"} relay fee + ≈ ${fmtEth(gas.reserve)} ETH kept for the vault's gas` : "—"}
                   rows={[
-                    ["From the note", pool === "zc" ? `${fmtZc(value)} ZC` : `${fmtEth(value)} ETH`],
+                    ["Taken from the note", pool === "zc" ? `${fmtZc(value)} ZC` : `${fmtEth(value)} ETH`],
                     [`Relay fee (${Number(bps) / 100}%, zipcoin's only income here)`, pool === "zc" ? `${fmtZc(fee)} ZC` : `${fmtEth(fee)} ETH`],
-                    [pool === "zc" ? "Sold for ETH on zipcoin's market" : "Arrives as ETH", quoting && !ethQuote ? "quoting…" : ethEst ? `≈ ${fmtEth(ethEst)} ETH (${usd(ethEst)})` : "—"],
-                    ...(gas ? ([["Vault deposit + fee reserve (kept on the key)", `≈ ${fmtEth(gas.reserve)} ETH (${usd(gas.reserve)})`], ["Chat credits", ethEst > gas.reserve ? `≈ ${fmtEth(ethEst - gas.reserve)} ETH (${usd(ethEst - gas.reserve)})` : "—"]] as [string, string][]) : []),
+                    [pool === "zc" ? "Sold for ETH on zipcoin's market (1% sales tax inside)" : "Arrives as ETH", ethEst ? `≈ ${fmtEth(ethEst)} ETH (${usd(ethEst)})` : "—"],
+                    ...(gas ? ([["Kept on the key: vault deposit + one close, at today's gas", `≈ ${fmtEth(gas.reserve)} ETH (${usd(gas.reserve)})`]] as [string, string][]) : []),
                   ]}
-                  caption={pool === "zc" ? "ZipChanger sells the ZC through zipcoin's own pool (1% sales tax like any trade) and delivers plain ETH to this chat's address. The minimum is locked for 30 minutes; the unzip fails rather than deliver less." : "The ETH leaves 0xbow's pool to this chat's address with no on-chain link to your deposit."}
+                  caption={pool === "zc" ? "Plain ETH lands on this chat's address; the price is locked for 30 minutes and the unzip fails rather than deliver less." : "The ETH leaves 0xbow's pool to this chat's address with no on-chain link to your deposit."}
                 />
               )}
               {tooSmall && <Notice tone="burn">Too small for a chat right now: gas for the vault deposit and a later close would eat {gas && ethEst ? `${Math.round((Number(gas.reserve) / Number(ethEst)) * 100)}%` : "most"} of it. Fund at least ≈ {fmtEth(minFundWei)} ETH ({usd(minFundWei)}).</Notice>}

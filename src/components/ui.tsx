@@ -205,17 +205,105 @@ export function TxLink({ hash }: { hash: string }) {
   );
 }
 
-export function Field({ label, hint, children }: { label: string; hint?: ReactNode; children: ReactNode }) {
+export function Field({ label, hint, info, children }: { label: string; hint?: ReactNode; info?: ReactNode; children: ReactNode }) {
   return (
     <label className="block">
       <div className="mb-2 flex items-baseline justify-between gap-3 text-xs text-muted">
-        <span className="shrink-0">{label}</span>
+        <span className="flex shrink-0 items-center gap-1.5">
+          {label}
+          {info && <Info>{info}</Info>}
+        </span>
         {hint && <span className="min-w-0 truncate text-faint">{hint}</span>}
       </div>
       {children}
     </label>
   );
 }
+
+/**
+ * The small ⓘ: one plain paragraph on hover, focus or tap. The label stays short; the explanation is here for whoever wants it.
+ * Click toggles it (phones), Escape or clicking elsewhere closes it.
+ */
+export function Info({ children, label = "What is this?" }: { children: ReactNode; label?: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <span className="group relative inline-flex">
+      <button
+        type="button"
+        aria-label={label}
+        aria-expanded={open}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setOpen((o) => !o);
+        }}
+        onBlur={() => setOpen(false)}
+        onKeyDown={(e) => e.key === "Escape" && setOpen(false)}
+        className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-line text-[10px] leading-none text-faint hover:border-muted hover:text-snow focus:border-tap focus:text-snow focus:outline-none"
+      >
+        i
+      </button>
+      <span
+        role="tooltip"
+        className={`absolute left-0 top-6 z-30 w-72 max-w-[80vw] border border-line bg-night p-3 text-left text-xs font-normal normal-case leading-relaxed tracking-normal text-muted shadow-lg ${open ? "block" : "hidden group-hover:block group-focus-within:block"}`}
+      >
+        {children}
+      </span>
+    </span>
+  );
+}
+
+/**
+ * Money, the way a person reads it: what it costs in total, what part of that is fees, and the breakdown only if they ask.
+ * Rows are the same tuples a Receipt takes.
+ */
+export function FeeSummary({
+  total,
+  fees,
+  rows,
+  caption,
+  totalLabel = "Total",
+  feesLabel = "Fees",
+  tone = "muted",
+}: {
+  total: ReactNode;
+  fees: ReactNode;
+  rows: [ReactNode, ReactNode][];
+  caption?: ReactNode;
+  totalLabel?: ReactNode;
+  feesLabel?: ReactNode;
+  tone?: "tap" | "burn" | "muted";
+}) {
+  const [open, setOpen] = useState(false);
+  const color = { tap: "text-tap", burn: "text-burn", muted: "text-muted" }[tone];
+  return (
+    <div className="text-sm">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] border-y border-line">
+        <div className="px-1 py-2 text-muted">{totalLabel}</div>
+        <div className="border-l border-line px-3 py-2 text-right text-snow">{total}</div>
+        <div className={`border-t border-line px-1 py-2 ${color}`}>{feesLabel}</div>
+        <div className="border-l border-t border-line px-3 py-2 text-right text-snow">{fees}</div>
+        {open &&
+          rows.map(([k, v], i) => (
+            <div key={i} className="contents">
+              <div className="min-w-0 border-t border-line px-1 py-2 text-xs text-faint">{k}</div>
+              <div className="border-l border-t border-line px-3 py-2 text-right text-xs text-muted">{v}</div>
+            </div>
+          ))}
+      </div>
+      <div className="flex items-baseline justify-between gap-3 px-1 pt-2 text-xs">
+        <span className="text-faint">{caption}</span>
+        {rows.length > 0 && (
+          <button type="button" className="shrink-0 text-muted hover:text-snow" onClick={() => setOpen((o) => !o)}>
+            {open ? "Hide details ↑" : "View details ↓"}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
 
 export const inputCls =
   "w-full border border-line bg-night px-3 py-3 text-snow outline-none placeholder:text-faint focus:border-tap";

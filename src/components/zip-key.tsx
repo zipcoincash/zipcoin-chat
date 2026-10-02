@@ -5,7 +5,7 @@ import { keccak256, numberToHex, stringToHex, type Hex } from "viem";
 
 import { isMnemonic, masterKeys, mnemonicFromSignature, ZIP_MESSAGE, type MasterKeys } from "@/lib/zip";
 
-import { Button, inputCls, Notice } from "./ui";
+import { Button, Info, inputCls, Notice } from "./ui";
 
 type ZipKey = {
   mnemonic: string | null;
@@ -132,9 +132,9 @@ export function ZipKeyPanel({ mode }: { mode: "wallet" | "phrase" }) {
           <Button className="w-full" onClick={zk.unlockWithWallet} busy={zk.busy} disabled={!zk.hasInjected}>
             {zk.hasInjected ? "Unlock zip key with a wallet signature" : "No wallet extension found"}
           </Button>
-          <p className="text-xs leading-relaxed text-faint">
-            The same signature zipcoin.cash asks for. It derives your zip key in this browser and nothing is sent anywhere; your
-            wallet signs a message, not a transaction, so nothing links it to this chat on chain.
+          <p className="flex items-center gap-1.5 text-xs text-faint">
+            A signature, not a transaction; nothing is sent anywhere.
+            <Info label="How does this work?">The same message zipcoin.cash asks you to sign. The signature becomes your zip key here in the browser, so you see the notes you zipped there. Signing a message costs nothing and leaves no trace on chain, so your wallet is not linked to this chat.</Info>
           </p>
         </>
       ) : (
@@ -150,9 +150,9 @@ export function ZipKeyPanel({ mode }: { mode: "wallet" | "phrase" }) {
           <Button tone="ghost" className="w-full" onClick={() => zk.usePhrase(phrase) && setPhrase("")}>
             Use this code
           </Button>
-          <p className="text-xs leading-relaxed text-faint">
-            The words stay in this tab. A zipped cheque link (<span className="text-muted">#phrase=…</span>) works the same way: the
-            part after # never leaves your browser.
+          <p className="flex items-center gap-1.5 text-xs text-faint">
+            The words stay in this tab.
+            <Info label="How does this work?">A zipped cheque or gift link (#phrase=…) works the same way: the part after # never leaves your browser. The twelve words are turned into your note keys here, and the proof that spends a note is built here too.</Info>
           </p>
         </>
       )}
