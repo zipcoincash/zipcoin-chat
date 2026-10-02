@@ -244,6 +244,21 @@ export default function ChatPage() {
     }
   };
 
+  /** The conversation as a file: Markdown to read, JSON to re-import or feed to something else. Nothing but the words. */
+  const exportChat = (kind: "md" | "json") => {
+    const stamp = new Date().toISOString().slice(0, 16).replace("T", " ");
+    const body =
+      kind === "json"
+        ? JSON.stringify({ exported: new Date().toISOString(), model, messages: msgs.map((m) => ({ role: m.role, content: m.content, ...(m.summary ? { onchain: m.summary } : {}) })) }, null, 2)
+        : [`# chat.zipcoin.cash · ${picked?.name ?? model} · ${stamp}`, "", ...msgs.map((m) => (m.role === "user" ? `**You:** ${m.summary ? m.content.split("\n")[0] : m.content}${m.summary ? `\n\n_on-chain data attached · ${m.summary}_` : ""}` : m.content)).flatMap((x) => [x, "", "---", ""])].join("\n");
+    const blob = new Blob([body], { type: kind === "json" ? "application/json" : "text/markdown" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `zipcoin-chat-${new Date().toISOString().slice(0, 10)}.${kind}`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
   /** zkAPI's quote comes from the Chainlink round at the finalized block and lives 75 minutes; around each hourly update it can be
    *  briefly expired for everyone. Take the message back and send it again in a minute, visibly, instead of asking the user to retype. */
   const scheduleRetry = (msg: Msg) => {
@@ -292,7 +307,13 @@ export default function ChatPage() {
   return (
     <div className="grid gap-6 page-in md:grid-cols-[1fr_280px]">
       <Card className="flex min-h-[70vh] flex-col">
-        <CardHead title={picked?.name ?? model} hint={lease ? `key live, cap $${lease.spending_limit_usd}, ${Math.max(0, lease.expires_at - Math.floor(Date.now() / 1000))}s` : "no key yet"} right={<button className="text-xs text-muted hover:text-snow" onClick={() => { setMsgs([]); setUsage({ prompt: 0, completion: 0, cost: 0, requests: 0 }); }}>clear</button>} />
+        <CardHead title={picked?.name ?? model} hint={lease ? `key live, cap $${lease.spending_limit_usd}, ${Math.max(0, lease.expires_at - Math.floor(Date.now() / 1000))}s` : "no key yet"} right={
+            <span className="flex gap-3 text-xs">
+              {msgs.length > 0 && <button className="text-muted hover:text-snow" onClick={() => exportChat("md")} title="download as Markdown">export</button>}
+              {msgs.length > 0 && <button className="text-muted hover:text-snow" onClick={() => exportChat("json")} title="download as JSON">json</button>}
+              <button className="text-muted hover:text-snow" onClick={() => { if (!msgs.length || confirm("Clear this conversation? Export it first if you want to keep it.")) { setMsgs([]); setUsage({ prompt: 0, completion: 0, cost: 0, requests: 0 }); } }}>clear</button>
+            </span>
+          } />
         <div className="flex-1 space-y-4 overflow-y-auto p-5">
           {msgs.length === 0 && <p className="text-sm text-faint">Nothing here yet. The first message proves your balance and gets a short-lived key; later ones reuse it until it expires.</p>}
           {msgs.map((m, i) =>
