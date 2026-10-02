@@ -9,6 +9,7 @@ import { PublishToBook } from "@/components/publish";
 import { Button, Card, CardHead, inputCls, Notice } from "@/components/ui";
 import { useWallet, useZkapiClient } from "@/components/wallet-ctx";
 import { gather, QUESTIONS, type Gathered, type QuestionKind } from "@/lib/onchain";
+import { mentionsZipcoin, zipcoinFacts } from "@/lib/zipcoin-facts";
 import { type Access, type Tier } from "@/lib/zkapi";
 
 /** `context` is on-chain data gathered in the browser for a crypto question: sent to the model, shown only as a summary. */
@@ -155,10 +156,16 @@ export default function ChatPage() {
     if (!prepared) setInput("");
     setError(null);
     setBusy(true);
-    const history: Msg[] = [...msgs, prepared ?? { role: "user", content: text }];
+    let userMsg: Msg = prepared ?? { role: "user", content: text };
+    // A question about zipcoin travels with the facts (origin, contract, links, live numbers), shown as a chip like on-chain data.
+    if (!userMsg.context && mentionsZipcoin(text)) {
+      const f = await zipcoinFacts();
+      userMsg = { ...userMsg, context: f.context, summary: f.summary };
+    }
+    const history: Msg[] = [...msgs, userMsg];
     setMsgs([...history, { role: "assistant", content: "" }]);
     // What the model sees: the on-chain data rides along with the question that gathered it; the screen shows the summary.
-    const wire = history.map((m) => ({ role: m.role, content: m.context ? `${m.content}\n\n[On-chain data fetched by the user's browser from a public RPC and Sourcify]\n${m.context}` : m.content }));
+    const wire = history.map((m) => ({ role: m.role, content: m.context ? `${m.content}\n\n[${m.summary?.startsWith("zipcoin facts") ? "Reference facts attached by chat.zipcoin.cash" : "On-chain data fetched by the user's browser from a public RPC, Sourcify and Blockscout"}]\n${m.context}` : m.content }));
     let access: Access | null = null;
     abort.current = new AbortController();
     try {
@@ -319,8 +326,8 @@ export default function ChatPage() {
           {msgs.map((m, i) =>
             m.role === "user" ? (
               <div key={i} className="ml-auto max-w-[85%] border border-line bg-raised px-4 py-3 text-sm text-snow">
-                <div className="whitespace-pre-wrap">{m.summary ? m.content.split("\n")[0] : m.content}</div>
-                {m.summary && <div className="mt-2 text-xs text-tap">on-chain data attached · {m.summary}</div>}
+                <div className="whitespace-pre-wrap">{m.summary && !m.summary.startsWith("zipcoin facts") ? m.content.split("\n")[0] : m.content}</div>
+                {m.summary && <div className="mt-2 text-xs text-tap">{m.summary.startsWith("zipcoin facts") ? m.summary : `on-chain data attached · ${m.summary}`}</div>}
               </div>
             ) : (
               <div key={i} className="max-w-[92%]">

@@ -4,7 +4,8 @@ import { createPublicClient, decodeEventLog, formatEther, formatUnits, getAddres
 import { mainnet } from "viem/chains";
 import { normalize } from "viem/ens";
 
-import { RPC_URL } from "./config";
+import { ADDR, RPC_URL } from "./config";
+import { ZC_LABEL } from "./zipcoin-facts";
 
 /**
  * Context for the three crypto questions, gathered in the browser from a public RPC and Sourcify. Nothing goes through
@@ -122,9 +123,11 @@ export async function gatherContract(address: Address, naming: Naming = null): P
   const eip1967 = await call(() => client.getStorageAt({ address, slot: "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc" }));
   const impl = eip1967 && BigInt(eip1967) !== 0n ? (`0x${eip1967.slice(-40)}` as Address) : null;
   const source = src?.mainSource ? src.mainSource.content.slice(0, 12_000) : null;
+  const isZc = getAddress(address) === getAddress(ADDR.zc);
   const lines = [
     `Contract ${address}`,
     ensLine(ens),
+    isZc ? `Label: ${ZC_LABEL}` : "",
     `bytecode: ${(code.length - 2) / 2} bytes${impl ? `; EIP-1967 proxy, implementation ${impl} (UPGRADEABLE)` : ""}`,
     isToken ? `ERC-20: ${name} (${symbol}), ${decimals} decimals, total supply ${formatUnits(supply ?? 0n, decimals)}` : "not a standard ERC-20 (name/symbol/decimals missing)",
     owner ? `owner(): ${owner}${owner === "0x0000000000000000000000000000000000000000" ? " (renounced)" : ""}` : "owner(): none exposed",
@@ -134,7 +137,7 @@ export async function gatherContract(address: Address, naming: Naming = null): P
   return { kind: "contract", subject: ens ? `${ens.name} (${address})` : address, summary: `${isToken ? `${symbol} token` : "contract"} · ${src ? "verified" : "unverified"}${impl ? " · proxy" : ""}${owner && owner !== "0x0000000000000000000000000000000000000000" ? " · has owner" : ""}`, context: lines.filter(Boolean).join("\n") };
 }
 
-type BsTransfer = { timestamp: string; from: { hash: string }; to: { hash: string }; total?: { value?: string; decimals?: string }; token: { symbol?: string; decimals?: string; name?: string } };
+type BsTransfer = { timestamp: string; from: { hash: string }; to: { hash: string }; total?: { value?: string; decimals?: string }; token: { symbol?: string; decimals?: string; name?: string; address?: string } };
 type BsTx = { timestamp: string; hash: string; method?: string | null; from: { hash: string }; to?: { hash: string; name?: string | null } | null; value: string; status?: string; fee?: { value?: string } };
 type BsToken = { token: { symbol?: string; decimals?: string; name?: string; address?: string }; value: string };
 const bs = async <T,>(path: string): Promise<T | null> => {
@@ -146,6 +149,10 @@ const ago = (iso: string) => {
   const h = (Date.now() - new Date(iso).getTime()) / 3_600_000;
   return h < 1 ? `${Math.round(h * 60)}m ago` : h < 48 ? `${Math.round(h)}h ago` : `${Math.round(h / 24)}d ago`;
 };
+
+const touchesZc = (held: { items: BsToken[] } | null, transfers: { items: BsTransfer[] } | null) =>
+  (held?.items ?? []).some((t) => (t.token.address ?? "").toLowerCase() === ADDR.zc.toLowerCase() || t.token.symbol === "ZC") ||
+  (transfers?.items ?? []).some((t) => t.token.symbol === "ZC" || (t.token.address ?? "").toLowerCase() === ADDR.zc.toLowerCase());
 
 export async function gatherWallet(address: Address, naming: Naming = null): Promise<Gathered> {
   const [balance, nonce, code, ens] = await Promise.all([client.getBalance({ address }), client.getTransactionCount({ address }), client.getCode({ address }), naming ? Promise.resolve(naming) : primaryName(address)]);
@@ -169,6 +176,7 @@ export async function gatherWallet(address: Address, naming: Naming = null): Pro
     `recent transactions (newest first, up to 25): ${calls.length ? "" : txs ? "none" : "unavailable"}`,
     ...calls.map((m) => `  ${m}`),
     `note: airdropped or spam tokens appear in holdings like any other; the owner did not necessarily acquire them.`,
+    touchesZc(held, transfers) ? `Label for ZC in this data: ${ZC_LABEL}` : "",
   ];
   const last = txs?.items?.[0]?.timestamp;
   return { kind: "wallet", subject: ens ? `${ens.name} (${address})` : address, summary: `${Number(formatEther(balance)).toFixed(4)} ETH · ${held?.items.length ?? "?"} tokens · ${nonce} txs${last ? ` · last ${ago(last)}` : ""}`, context: lines.filter(Boolean).join("\n") };
