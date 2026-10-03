@@ -40,9 +40,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# agent notes, never committed
-AGENTS.md
-CLAUDE.md
 # generated at build time: zkAPI assets from the pinned SDK (scripts/zkapi-assets.mjs), 0xbow circuit artifacts (scripts/artifacts.mjs)
 public/zkapi/
 public/artifacts/
