@@ -33,6 +33,27 @@ export default function PrivacyPage() {
       </div>
 
       <Card>
+        <div id="openrouter" className="scroll-mt-24">
+          <CardHead title="How OpenRouter is used" hint="for the curious, and for OpenRouter's directory" />
+        </div>
+        <div className="space-y-3 p-5 text-sm leading-relaxed text-muted">
+          <p>
+            Every answer here comes from a model on <a className="text-ice hover:underline" href="https://openrouter.ai" target="_blank" rel="noreferrer">OpenRouter</a>; the catalog you pick from is theirs. The request goes from your browser straight to
+            <code> openrouter.ai/api/v1/chat/completions</code>, streamed, with the usual <code>HTTP-Referer: https://chat.zipcoin.cash</code> and <code>X-Title: zipcoin chat</code> headers so OpenRouter knows which app it is.
+          </p>
+          <p>
+            <span className="text-snow">There is no &ldquo;bring your own key&rdquo; mode, on purpose.</span> The key the browser uses is a short-lived child key (five minutes, $1 cap) minted by Open Anonymity&apos;s OpenRouter organisation
+            after zkAPI&apos;s server checks a zero-knowledge proof that a funded note can pay. It is never tied to an account of yours; when it expires, the usage is settled against the note and the next message gets a new key. A personal
+            OpenRouter key would put an account, a card and a billing history behind every prompt, which is the one thing this page exists to avoid.
+          </p>
+          <p>
+            What OpenRouter can see: the prompt and the answer, your IP address, the model, the app name. What it cannot see: who paid, which wallet funded the note, or that two sessions belong to the same person.
+            Prefer nothing to leave your machine at all? The chat also runs against a model on your own computer (Model → <em>on my computer</em>), with no OpenRouter involved.
+          </p>
+        </div>
+      </Card>
+
+      <Card>
         <CardHead title="Experimental, and whose it is" />
         <div className="space-y-3 p-5 text-sm leading-relaxed text-muted">
           <p>

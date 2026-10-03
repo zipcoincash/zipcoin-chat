@@ -196,7 +196,7 @@ export default function ChatPage() {
       for (let attempt = 0; attempt < 2; attempt++) {
         r = await fetch(`${access.baseUrl}/chat/completions`, {
           method: "POST",
-          headers: access.headers,
+          headers: { ...access.headers, "x-title": "zipcoin chat" },
           signal: abort.current.signal,
           body: JSON.stringify({ model, messages: wire, stream: true, max_tokens: Math.max(256, maxTokens), stream_options: { include_usage: true } }),
         });
